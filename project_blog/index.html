@@ -1,0 +1,326 @@
+<html>
+<head>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+
+<link rel="shortcut icon" href="images/icon.ico">
+<style type="text/css">
+	body {
+		background-color: #f5f9ff;
+	}
+
+	/* Hide both math displays initially, will display based on JS detection */
+  .mathjax-mobile, .mathml-non-mobile { display: none; }
+
+  /* Show the MathML content by default on non-mobile devices */
+  .show-mathml .mathml-non-mobile { display: block; }
+  .show-mathjax .mathjax-mobile { display: block; }
+
+	.content-margin-container {
+		display: flex;
+		width: 100%; /* Ensure the container is full width */
+		justify-content: left; /* Horizontally centers the children in the container */
+		align-items: center;  /* Vertically centers the children in the container */
+	}
+	.main-content-block {
+		width: 70%; /* Change this percentage as needed */
+    max-width: 1100px; /* Optional: Maximum width */
+		background-color: #fff;
+		border-left: 1px solid #DDD;
+		border-right: 1px solid #DDD;
+		padding: 8px 8px 8px 8px;
+		font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;#"Avenir";
+	}
+	.margin-left-block {
+			font-size: 14px;
+			width: 15%; /* Change this percentage as needed */
+			max-width: 130px; /* Optional: Maximum width */
+			position: relative;
+			margin-left: 10px;
+			text-align: left;
+			font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;#"Avenir";
+			padding: 5px;
+	}
+	.margin-right-block {
+			font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;#"Avenir";
+			font-size: 14px;
+			width: 25%; /* Change this percentage as needed */
+			max-width: 256px; /* Optional: Maximum width */
+			position: relative;
+			text-align: left;
+			padding: 10px;  /* Optional: Adds padding inside the caption */
+	}
+
+	img {
+			max-width: 100%; /* Make sure it fits inside the container */
+			height: auto;
+			display: block;
+			margin: auto;
+	}
+	.my-video {
+			max-width: 100%; /* Make sure it fits inside the container */
+			height: auto;
+			display: block;
+			margin: auto;
+	}
+	/* Hide both video displays initially, will display based on JS detection */
+  .vid-mobile, .vid-non-mobile { display: none; }
+
+  /* Show the video content by default on non-mobile devices */
+  .show-vid-mobile .vid-mobile { display: block; }
+  .show-vid-non-mobile .vid-non-mobile { display: block; }
+
+	a:link,a:visited
+	{
+		color: #0e7862; /*#1367a7;*/
+		text-decoration: none;
+	}
+	a:hover {
+		color: #24b597; /*#208799;*/
+	}
+
+	h1 {
+		font-size: 18px;
+		margin-top: 4px;
+		margin-bottom: 10px;
+	}
+
+	table.header {
+    font-weight: 300;
+    font-size: 17px;
+    flex-grow: 1;
+		width: 70%;
+    max-width: calc(100% - 290px); /* Adjust according to the width of .paper-code-tab */
+	}
+	table td, table td * {
+	    vertical-align: middle;
+	    position: relative;
+	}
+	table.paper-code-tab {
+	    flex-shrink: 0;
+	    margin-left: 8px;
+	    margin-top: 8px;
+	    padding: 0px 0px 0px 8px;
+	    width: 290px;
+	    height: 150px;
+	}
+
+	.layered-paper { /* modified from: http://css-tricks.com/snippets/css/layered-paper/ */
+		box-shadow:
+		        0px 0px 1px 1px rgba(0,0,0,0.35), /* The top layer shadow */
+		        5px 5px 0 0px #fff, /* The second layer */
+		        5px 5px 1px 1px rgba(0,0,0,0.35), /* The second layer shadow */
+		        10px 10px 0 0px #fff, /* The third layer */
+		        10px 10px 1px 1px rgba(0,0,0,0.35); /* The third layer shadow */
+		margin-top: 5px;
+		margin-left: 10px;
+		margin-right: 30px;
+		margin-bottom: 5px;
+	}
+
+	hr {
+    height: 1px; /* Sets the height of the line to 1 pixel */
+    border: none; /* Removes the default border */
+    background-color: #DDD; /* Sets the line color to black */
+  }
+
+	div.hypothesis {
+		width: 80%;
+		background-color: #EEE;
+		border: 1px solid black;
+		border-radius: 10px;
+		-moz-border-radius: 10px;
+		-webkit-border-radius: 10px;
+		font-family: Courier;
+		font-size: 18px;
+		text-align: center;
+		margin: auto;
+		padding: 16px 16px 16px 16px;
+	}
+
+	div.citation {
+    font-size: 0.8em;
+    background-color:#fff;
+    padding: 10px;
+		height: 200px;
+  }
+
+	.fade-in-inline {
+		position: absolute;
+		text-align: center;
+		margin: auto;
+		-webkit-mask-image: linear-gradient(to right,
+																			transparent 0%,
+																			transparent 40%,
+																			black 50%,
+																			black 90%,
+																			transparent 100%);
+		mask-image: linear-gradient(to right,
+																transparent 0%,
+																transparent 40%,
+																black 50%,
+																black 90%,
+																transparent 100%);
+		-webkit-mask-size: 8000% 100%;
+		mask-size: 8000% 100%;
+		animation-name: sweepMask;
+		animation-duration: 4s;
+		animation-iteration-count: infinite;
+		animation-timing-function: linear;
+		animation-delay: -1s;
+	}
+
+	.fade-in2-inline {
+			animation-delay: 1s;
+	}
+
+	.inline-div {
+			position: relative;
+	    display: inline-block; /* Makes both the div and paragraph inline-block elements */
+	    vertical-align: top; /* Aligns them at the top, you can adjust this to middle, bottom, etc., based on your needs */
+	    width: 50px; /* Optional: Adds space between the div and the paragraph */
+	}
+
+</style>
+
+	  <title>An Edge of Stability in Language Model Post-Training</title>
+      <meta property="og:title" content="An Edge of Stability in Language Model Post-Training" />
+			<meta charset="UTF-8">
+</head>
+
+<body>
+
+	<div class="content-margin-container">
+			<div class="margin-left-block">
+
+			</div>
+		<div class="main-content-block">
+					<table class="header" align=left>
+							<tr>
+								<td colspan=4>
+									<span style="font-size: 32px; font-family: 'Courier New', Courier, monospace; /* Adds fallbacks */">An Edge of Stability in Language Model Post-Training</span>
+								</td>
+							</tr>
+							<tr>
+									<td align=left>
+											<span style="font-size:17px"><a href="https://aopatric.github.io">Angel Patricio</a></span>
+									</td>
+							<tr>
+								<td colspan=4 align=left><span style="font-size:18px">6.7960 Deep Learning, MIT</span></td>
+							</tr>
+					</table>
+				</div>
+	</div>
+
+	<div class="content-margin-container" id="intro">
+		<div class="margin-left-block">
+			<!-- #TODO: table of contents here -->
+			<div style="position:fixed; max-width:inherit; top:max(20%,120px)">
+				<b style="font-size:16px">Outline</b><br><br>
+				<a href="#intro">Introduction</a><br><br>
+				<a href="#references">References</a><br><br>
+			</div>
+		</div>
+	</div>
+
+	<!-- Body Entry Template #TODO: Remove this -->
+	<div class="content-margin-container" id="ID_HERE">
+		<div class="margin-left-block">
+		</div>
+
+		<div class="main-content-block">
+		</div>
+
+		<div class="margin-right-block">
+		</div>
+	</div>
+
+	<!-- 1: Introduction - What is EoS? -->
+	<div class="content-margin-container" id="intro">
+		<div class="margin-left-block"></div>
+		<div class="main-content-block">
+			<h1>Introduction: The Edge of Stability</h1>
+			<br>
+			When training large-scale deep neural networks, researchers have observed that the learning process tends to gravitate towards
+			a narrow region of the loss landscape right at the boundary of where theory predicts our optimization algorithms should become unstable.
+			This phenomenon was first observed in neural networks (Cohen et al. 2021) <a href="#ref_1">[1]</a> and has been since coined "the edge of stability" (EoS).
+			<br><br>
+			EoS refers to the regime in which the <em>sharpness</em> of the loss landscape, a quantity defined as the largest Hessian eigenvalue for 
+			<math display="inline" class="tml-display" style="display:inline math;"><mrow><mi class="mathcal">ℋ</mi><mo>=</mo><msubsup><mo form="prefix" stretchy="false">∇</mo><mi>θ</mi><mn>2</mn></msubsup><mi class="mathcal">ℒ</mi><mo form="prefix" stretchy="false">(</mo><mi>θ</mi><mo form="postfix" stretchy="false">)</mo></mrow></math>
+			, increases steadily during early training until a threshold value
+			<br><br>
+			<math display="block" class="tml-display" style="display:block math;"><mrow><msub><mi>λ</mi><mi>max</mi></msub><mo>≈</mo><mfrac><mn>2</mn><mi>η</mi></mfrac></mrow></math>
+			<br>
+			is reached for given learning rate <math display="inline" class="tml-display" style="display:inline math;"><mi>η</mi></math>.
+			Under a quadratic approximation to our loss function, classical optimization theory tells us that gradient descent is no longer stable
+			and will begin to oscillate chaotically and diverge.
+			<br><br>
+			However, we observe in practice that once this threshold value is reached and training continues, the sharpness fluctuates around this value while the loss
+			continues to decrease non-monotonically. This behavior implies that there is something fundamentally different between the assumptions made
+			by classical optimization theory and the true nature of large, nonlinear, nonconvex, stochastic systems.
+			<br><br>
+			Deep networks, opposed to classical optimization theory, seem to <em>self-organize</em> at the EoS, and somehow this behavior
+			leads to improved generalization in the resulting models.
+			<br><br>
+			The phenomenon has been observed in a variety of deep learning architectures including neural networks and CNNs in the original
+			work as well as transformer models in more recent work (Wang et al. 2025) <a href="#ref_2">[2]</a>. Beyond the conclusions of the original work,
+			Wang et al. further investigates the phenomenon by studying sharpness dynamics
+			in transformer training on a block-by-block basis. Notably, they observe that the sharpness dynamics are not uniform across the layers and
+			in fact each layer exhibits its own unique sharpness threshold and local EoS, suggesting that EoS is not a niche
+			phenomenon but instead an intrinsic emergent property under the learning dynamics of deep neural networks.
+			<br><br>
+			Since its discovery, EoS has become a poorly understood yet conceptually significant phenomenon in deep learning. Many open questions
+			relating to both its theoretical and practical implications remain to be answered.
+			<br><br>
+			This post aims to shine light on one such unexplored axis: <em>the dynamics of EoS in the context of language model post-training</em>.
+			In particular, this post investigates whether EoS dynamics are observed in a number of differest post-training tasks including both full-parameter and adapter-based
+			find-tuning as well as RLHF-style reinforcement learning post-training.
+		</div>
+	</div>
+
+	<!--- 2: Background: EoS in Pre-Training -->
+	<div class="content-margin-container" id="background">
+		<div class="margin-left-block"></div>
+		<div class="main-content-block">
+			<h1>Background: The Pre-Training Case</h1>
+			<br>
+
+		</div>
+	</div>
+
+	<!--- 3: Hypothesis: Motivation and Experiment Design -->
+	<div class="content-margin-container" id="hypothesis">
+		<div class="margin-left-block"></div>
+		<div class="main-content-block">
+			<h1>Hypothesis: Motivation and Experiment Design</h1>
+			<br>
+
+		</div>
+	</div>
+
+	<!--- 4: Results and Discussion -->
+	<div class="content-margin-container" id="results">
+		<div class="margin-left-block"></div>
+		<div class="main-content-block">
+			<h1>Results and Discussion</h1>
+			<br>
+
+		</div>
+	</div>
+	<!-- References -->
+	<div class="content-margin-container" id="references">
+			<div class="margin-left-block">
+			</div>
+		<div class="main-content-block">
+					<div class='citation' id="references" style="height:auto"><br>
+						<span style="font-size:16px">References:</span><br><br>
+						<a id="ref_1"></a>[1] <a href="https://arxiv.org/abs/2103.00065">Gradient Descent on Neural Networks Typically Occurs at the Edge of Stability</a>, Cohen et al. (2021)<br><br>
+						<a id="ref_2"></a>[2] <a href="https://arxiv.org/abs/2502.19002">The Sharpness Disparity Principle in Transformers for Accelerating Language Model Pre-Training</a>, Wang et al. (2025)<br><br>
+						<a id="ref_3"></a>[3] <a href="https://arxiv.org/abs/2412.20553">Edge of Stochastic Stability: Revisiting the Edge of Stability for SGD</a>, Andreyev et al. (2024)<br><br>
+					</div>
+		</div>
+	</div>
+
+</body>
+
+</html>
