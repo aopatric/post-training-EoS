@@ -3,6 +3,15 @@ Module for generating the synthetic arithmetic dataset, as well
 as implementing the gymnasium-style environment for RLVR.
 """
 
+"""
+TODO: refactor with a generator function and custom operators;
+make sure to make it work better and use natural language prompts to
+introduce more variability in the dataset. Aim for ~10-20 sample formats
+per problem type.
+
+Use 4 digits in each operation. This way we have a large state space of possible samples.
+"""
+
 # ==============================
 # Imports
 # ==============================
@@ -39,6 +48,8 @@ PROBLEM_TYPES= {
 # ==============================
 # Per-Task Generators
 # ==============================
+
+# TODO: fix docstrings for the missing ones
 
 def generate_one_digit_addition_samples(num_samples: int, seed: int = 42) -> List[Dict[str, Any]]:
     """
@@ -300,8 +311,6 @@ def generate_two_digit_division_samples(num_samples: int, seed: int = 42) -> Lis
     return samples
 
 
-
-
 # ==============================
 # Aggregator / Full Dataset Generator
 # ==============================
@@ -349,9 +358,10 @@ def generate_arithmetic_dataset(
         all_samples.extend(samples)
     
     with open(output_path, "w") as f:
-        for sample in all_samples:
-            f.write(json.dumps(sample) + "\n")
+        json.dump(all_samples, f, indent=4)
     
     print(f"Dataset saved to {output_path}")
+    print(f"Dataset contains {len(all_samples)} samples.")
+    print(f"Sample: {all_samples[0]}")
 
     return all_samples
