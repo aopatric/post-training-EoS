@@ -1,0 +1,35 @@
+experiment_name:
+  - "SFT 70M LR-0.01"
+  - "SFT 70M LR-0.05"
+  - "SFT 70M LR-0.1"
+
+use_wandb: true
+wandb_project: post_training_eos
+wandb_entity: null
+wandb_group: sft_fullparam_sweep
+
+model_name: EleutherAI/pythia-70m
+use_lora: false
+
+dataset_name: alpaca
+max_length: 2048
+subsample_size: 20000
+
+batch_size: 1
+optimizer: sgd
+learning_rate:
+  - 0.01
+  - 0.05
+  - 0.1
+weight_decay: 1e-4
+momentum: 0.9
+
+eval_interval: 500
+save_interval: 5000
+max_steps: 10000
+device: cuda
+
+gradient_checkpointing: false
+compute_global_sharpness: false
+compute_block_sharpness: true
+sharpness_layer_indices: [-1]

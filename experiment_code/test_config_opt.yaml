@@ -1,0 +1,17 @@
+experiment_name: "test_run_opt"
+model_name: "EleutherAI/pythia-70m"
+dataset_name: "alpaca"
+max_length: 128
+subsample_size: 100
+batch_size: 2
+optimizer: "sgd"
+learning_rate: 1e-3
+momentum: 0.9
+weight_decay: 0.01
+max_steps: 5
+eval_interval: 2
+save_interval: 10
+device: "cuda"
+compute_global_sharpness: true
+compute_block_sharpness: true
+sharpness_layer_indices: [-1]

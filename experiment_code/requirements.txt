@@ -2,3 +2,10 @@ numpy
 ipykernel
 jupyter
 tqdm
+torch
+transformers
+datasets
+peft
+matplotlib
+wandb
+scipy
