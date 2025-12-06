@@ -87,13 +87,26 @@ def train(config: ExperimentConfig):
         tokenizer.pad_token = tokenizer.eos_token
         
     # Load Dataloader
+    # 1. Load Dataset ONCE
+    from src.dataloading import get_sft_dataset
+    
+    full_dataset = get_sft_dataset(
+        dataset_name=config.dataset_name,
+        tokenizer=tokenizer,
+        max_length=config.max_length,
+        seed=config.seed,
+        subsample_size=config.subsample_size
+    )
+    
+    # 2. Create Train Dataloader
     dataloader = get_sft_dataloader(
         dataset_name=config.dataset_name,
         tokenizer=tokenizer,
         batch_size=config.batch_size,
         max_length=config.max_length,
         seed=config.seed,
-        subsample_size=config.subsample_size
+        subsample_size=config.subsample_size,
+        dataset=full_dataset # Reuse
     )
     
     # Optimizer
@@ -115,13 +128,18 @@ def train(config: ExperimentConfig):
 
     # Create a fixed batch for EoS metrics to ensure consistency (reduce noise from data)
     print("Creating fixed validation batch for EoS metrics...")
+    
+    # Reuse the SAME dataset object, just select a small subset for the eval loader
+    # This avoids reloading/retokenizing
+    eval_subset = full_dataset.select(range(min(100, len(full_dataset))))
+    
     eval_dataloader = get_sft_dataloader(
         dataset_name=config.dataset_name,
         tokenizer=tokenizer,
-        batch_size=2, # Fixed small batch size to avoid OOM
+        batch_size=config.eval_batch_size, # Use separate small batch size for eval
         max_length=config.max_length,
         seed=config.seed + 1, 
-        subsample_size=100 
+        dataset=eval_subset # Reuse subset
     )
     eval_batch = next(iter(eval_dataloader))
     eval_batch = {k: v.to(device) for k, v in eval_batch.items()}
@@ -236,19 +254,38 @@ def train(config: ExperimentConfig):
             
             # 2. Compute Sharpness (Global + Blocks)
             
-            # Global
-            global_sharpprod = 0.0
-            global_sharpness = 0.0
-            if config.compute_global_sharpness:
-                global_results = compute_sharpness(model, loss_wrapper, eval_batch, block_names=None)
-                global_sharpness = global_results.get('global', 0.0)
-                global_sharpprod = global_sharpness * config.learning_rate
-                print(f"Step {step}: Sharpness (Global) = {global_sharpness:.4f}, Product = {global_sharpprod:.4f}")
+            # 2. Compute Sharpness (Global + Blocks)
             
-            # Blocks
-            block_results = {}
-            if config.compute_block_sharpness and actual_block_names:
-                block_results = compute_sharpness(model, loss_wrapper, eval_batch, block_names=actual_block_names)
+            # Global Results
+            global_metrics = {}
+            
+            # A. Spectral Sharpness (Lanczos)
+            if config.compute_spectral_sharpness:
+                if config.compute_global_sharpness:
+                    res = compute_sharpness(model, loss_wrapper, eval_batch, block_names=None)
+                    val = res.get('global', 0.0)
+                    global_metrics['global_spectral_sharpness'] = val
+                    print(f"Step {step}: Spectral Sharpness (Global) = {val:.4f}")
+                
+                if config.compute_block_sharpness and actual_block_names:
+                    block_results = compute_sharpness(model, loss_wrapper, eval_batch, block_names=actual_block_names)
+                    # Store for logging later
+                    global_metrics['block_spectral_results'] = block_results
+
+            # B. Batch Sharpness (Gradient Projection)
+            if config.compute_batch_sharpness:
+                # Import the new function
+                from src.metrics import compute_batch_sharpness
+                
+                if config.compute_global_sharpness:
+                    res = compute_batch_sharpness(model, loss_wrapper, eval_batch, block_names=None)
+                    val = res.get('global', 0.0)
+                    global_metrics['global_batch_sharpness'] = val
+                    print(f"Step {step}: Batch Sharpness (Global) = {val:.4f}")
+                
+                if config.compute_block_sharpness and actual_block_names:
+                    block_results = compute_batch_sharpness(model, loss_wrapper, eval_batch, block_names=actual_block_names)
+                    global_metrics['block_batch_results'] = block_results
             
             if not config.compute_global_sharpness:
                 print(f"Step {step}: EoS evaluation complete (Global skipped)")
@@ -260,17 +297,37 @@ def train(config: ExperimentConfig):
             metrics = {
                 "step": step,
                 "loss": current_loss,
-                "global_sharpness": global_sharpness,
-                "global_sharpprod": global_sharpprod,
                 "lr": config.learning_rate
             }
             
+            # Add Global Metrics
+            if 'global_spectral_sharpness' in global_metrics:
+                val = global_metrics['global_spectral_sharpness']
+                metrics["global_sharpness"] = val # Keep legacy name for compatibility
+                metrics["global_spectral_sharpness"] = val
+                metrics["global_sharpprod"] = val * config.learning_rate
+                
+            if 'global_batch_sharpness' in global_metrics:
+                val = global_metrics['global_batch_sharpness']
+                metrics["global_batch_sharpness"] = val
+                metrics["global_batch_sharpprod"] = val * config.learning_rate
+            
             # Add block metrics using friendly names
-            for friendly_name, actual_name in block_mapping.items():
-                if actual_name in block_results:
-                    val = block_results[actual_name]
-                    metrics[f"{friendly_name}_sharpness"] = val
-                    metrics[f"{friendly_name}_sharpprod"] = val * config.learning_rate
+            if 'block_spectral_results' in global_metrics:
+                block_results = global_metrics['block_spectral_results']
+                for friendly_name, actual_name in block_mapping.items():
+                    if actual_name in block_results:
+                        val = block_results[actual_name]
+                        metrics[f"{friendly_name}_sharpness"] = val
+                        metrics[f"{friendly_name}_sharpprod"] = val * config.learning_rate
+
+            if 'block_batch_results' in global_metrics:
+                block_results = global_metrics['block_batch_results']
+                for friendly_name, actual_name in block_mapping.items():
+                    if actual_name in block_results:
+                        val = block_results[actual_name]
+                        metrics[f"{friendly_name}_batch_sharpness"] = val
+                        metrics[f"{friendly_name}_batch_sharpprod"] = val * config.learning_rate
                 
             logger.log(metrics)
             
@@ -278,6 +335,10 @@ def train(config: ExperimentConfig):
         outputs = model(**batch)
         loss = outputs.loss
         loss.backward()
+        
+        # Gradient Clipping
+        if config.max_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
         
         optimizer.step()
         optimizer.zero_grad()

@@ -40,6 +40,11 @@ def compute_hvp(
     grads_2 = torch.autograd.grad(dot, inputs=params, retain_graph=True)
     hvp = parameters_to_vector(grads_2)
     
+    # Check for NaNs in HVP
+    if torch.isnan(hvp).any():
+        # print("Warning: NaN found in HVP, returning zeros")
+        return torch.zeros_like(hvp)
+    
     return hvp.detach() # Detach to save memory, we don't need higher order derivatives of this
 
 def lanczos(
@@ -70,6 +75,9 @@ def lanczos(
     # Reference code uses default which is 'LM' for eigsh? No, eigsh default is 'LM'.
     # Reference code uses `eigsh(operator, neigs)`.
     try:
+        # Check if vector has NaNs (SciPy might pass them if previous steps failed)
+        # But here we just run eigsh.
+        
         evals, _ = eigsh(operator, k=neigs, which='LM', tol=1e-2)
         # Return the largest magnitude eigenvalue
         return float(np.max(np.abs(evals)))
@@ -175,6 +183,141 @@ def compute_sharpness(
             
     return results
 
+def compute_batch_sharpness(
+    model: torch.nn.Module,
+    loss_fn: Callable[[torch.nn.Module, Any], torch.Tensor],
+    batch: Any,
+    block_names: Optional[List[str]] = None
+) -> Dict[str, float]:
+    """
+    Computes 'Batch Sharpness' (directional curvature along the gradient).
+    Formula: (grad^T * H * grad) / (grad^T * grad)
+    
+    Args:
+        model: The model.
+        loss_fn: Function that takes (model, batch) and returns scalar loss.
+        batch: Data batch.
+        block_names: List of module names to analyze.
+        
+    Returns:
+        Dict[str, float]: Dictionary mapping block names (or 'global') to batch sharpness values.
+    """
+    results = {}
+    
+    if block_names is None:
+        # Global Batch Sharpness
+        
+        # 1. Compute Loss
+        loss = loss_fn(model, batch)
+        
+        # 2. Compute Gradients
+        params = [p for p in model.parameters() if p.requires_grad]
+        if not params:
+            return {}
+            
+        grads = torch.autograd.grad(loss, inputs=params, create_graph=True)
+        flat_grads = parameters_to_vector(grads)
+        
+        # 3. Compute Norm Squared
+        grad_norm_sq = flat_grads.pow(2).sum()
+        
+        if grad_norm_sq.item() == 0:
+            results['global'] = 0.0
+        else:
+            # 4. Compute HVP (H * grad)
+            # grad(grad_norm_sq) = 2 * H * grad? No.
+            # grad(grad^T * grad) = 2 * grad^T * H?
+            # Let's stick to the definition: HVP(v) = grad(grad(L)^T * v)
+            # Here v = grad(L). So dot = grad(L)^T * grad(L) = grad_norm_sq.
+            # So grad(dot) = grad(grad_norm_sq) = 2 * H * grad(L).
+            # Wait, d/dtheta (g^T g) = 2 g^T (dg/dtheta) = 2 g^T H.
+            # So grad(grad_norm_sq) gives 2 * H * g.
+            # So we need to divide by 2?
+            # Let's verify Pearlmutter trick.
+            # dot = grad * v.
+            # grad(dot) = H * v.
+            # Here v is NOT constant, v is grad(theta).
+            # So if we differentiate grad^T * grad, we get term for first grad and second grad.
+            # It's 2 * H * grad.
+            # So yes, we need to divide by 2 if we differentiate grad_norm_sq directly.
+            
+            # However, in compute_hvp, 'vector' is treated as constant (detached).
+            # If we pass flat_grads as a detached vector, then we are good.
+            # But here I am differentiating grad_norm_sq which depends on theta twice.
+            
+            # Let's do it safely using the standard HVP trick with detached vector.
+            v = flat_grads.detach()
+            
+            # Re-compute dot with detached vector to treat it as constant for the second derivative
+            # dot = grad^T * v
+            dot = flat_grads.mul(v).sum()
+            
+            # grad(dot) = H * v
+            hvp = parameters_to_vector(torch.autograd.grad(dot, inputs=params, retain_graph=True))
+            
+            numerator = v.mul(hvp).sum()
+            batch_sharpness = numerator / grad_norm_sq
+            results['global'] = batch_sharpness.item()
+            
+    else:
+        # Block-wise Batch Sharpness
+        
+        # 1. Save state
+        grad_state = {p: p.requires_grad for p in model.parameters()}
+        
+        # 2. Disable all
+        for p in model.parameters():
+            p.requires_grad = False
+            
+        # 3. Iterate blocks
+        for name, module in model.named_modules():
+            if name in block_names:
+                # Enable for this block
+                params = []
+                for p in module.parameters():
+                    if grad_state.get(p, False):
+                        p.requires_grad = True
+                        params.append(p)
+                
+                if not params:
+                    continue
+                    
+                try:
+                    # Compute Loss
+                    loss = loss_fn(model, batch)
+                    
+                    # Compute Gradients
+                    grads = torch.autograd.grad(loss, inputs=params, create_graph=True)
+                    flat_grads = parameters_to_vector(grads)
+                    
+                    grad_norm_sq = flat_grads.pow(2).sum()
+                    
+                    if grad_norm_sq.item() == 0:
+                        results[name] = 0.0
+                    else:
+                        # Compute HVP
+                        v = flat_grads.detach()
+                        dot = flat_grads.mul(v).sum()
+                        hvp = parameters_to_vector(torch.autograd.grad(dot, inputs=params, retain_graph=True))
+                        
+                        numerator = v.mul(hvp).sum()
+                        batch_sharpness = numerator / grad_norm_sq
+                        results[name] = batch_sharpness.item()
+                        
+                except Exception as e:
+                    print(f"Error computing batch sharpness for {name}: {e}")
+                    results[name] = 0.0
+                
+                # Disable again
+                for p in params:
+                    p.requires_grad = False
+                    
+        # 4. Restore state
+        for p, state in grad_state.items():
+            p.requires_grad = state
+            
+    return results
+
 if __name__ == "__main__":
     print("Metrics module (Manual HVP version)")
     
@@ -209,4 +352,3 @@ if __name__ == "__main__":
         
     except Exception as e:
         print(f"Test failed: {e}")
-

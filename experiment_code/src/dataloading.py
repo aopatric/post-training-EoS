@@ -136,6 +136,14 @@ def get_sft_dataset(
         print(f"Error loading dataset {hf_id}: {e}")
         raise e
 
+    # Subsample BEFORE tokenization to save time
+    if subsample_size is not None:
+        if subsample_size < len(dataset):
+            print(f"Subsampling dataset from {len(dataset)} to {subsample_size}...")
+            dataset = dataset.select(range(subsample_size))
+        else:
+            print(f"Subsample size {subsample_size} >= dataset size {len(dataset)}, using full dataset.")
+
     def preprocess_function(examples):
         # examples is a dict of lists: {'instruction': ['...'], 'input': ['...'], ...}
         
@@ -195,20 +203,22 @@ def get_sft_dataloader(
     seed: int = 42,
     subsample_size: Optional[int] = None,
     num_workers: int = 0,
-    pin_memory: bool = False
+    pin_memory: bool = False,
+    dataset: Optional[Dataset] = None # Allow passing pre-loaded dataset
 ) -> torch.utils.data.DataLoader:
     """
     Creates a DataLoader for SFT.
     """
     from transformers import default_data_collator
     
-    dataset = get_sft_dataset(
-        dataset_name=dataset_name,
-        tokenizer=tokenizer,
-        max_length=max_length,
-        seed=seed,
-        subsample_size=subsample_size
-    )
+    if dataset is None:
+        dataset = get_sft_dataset(
+            dataset_name=dataset_name,
+            tokenizer=tokenizer,
+            max_length=max_length,
+            seed=seed,
+            subsample_size=subsample_size
+        )
     
     dataloader = torch.utils.data.DataLoader(
         dataset,

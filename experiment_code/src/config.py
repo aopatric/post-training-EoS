@@ -34,6 +34,7 @@ class ExperimentConfig:
     
     # training/opt
     batch_size: int = 8
+    eval_batch_size: int = 2 # Small batch for expensive metrics
     optimizer: str = "adamw"
     learning_rate: float = 1e-4
     weight_decay: float = 0.0
@@ -45,6 +46,10 @@ class ExperimentConfig:
     # misc
     device: str = "cuda"
     gradient_checkpointing: bool = False
+    max_grad_norm: float = 1.0
+    max_grad_norm: float = 1.0
+    compute_spectral_sharpness: bool = True
+    compute_batch_sharpness: bool = False
     compute_global_sharpness: bool = True
     compute_block_sharpness: bool = True
     sharpness_layer_indices: Optional[List[int]] = None
@@ -130,8 +135,27 @@ def expand_config(filepath: str) -> List[ExperimentConfig]:
     # zipped expansion
     for i in range(num_configs):
         current_cfg_dict = copy.deepcopy(single_keys)
+        
+        # Build run name suffix from varied params
+        run_name_parts = []
+        
         for k, v_list in zip(list_keys, list_values):
-            current_cfg_dict[k] = v_list[i]
+            val = v_list[i]
+            current_cfg_dict[k] = val
+            
+            # Format value for run name (shorten floats)
+            if isinstance(val, float):
+                val_str = f"{val:.2e}" if val < 1e-3 or val > 1e3 else f"{val}"
+            else:
+                val_str = str(val)
+            run_name_parts.append(f"{k}={val_str}")
+            
+        # Set wandb_run_name
+        varied_suffix = ",".join(run_name_parts)
+        if "wandb_run_name" in current_cfg_dict and current_cfg_dict["wandb_run_name"]:
+             current_cfg_dict["wandb_run_name"] = f"{current_cfg_dict['wandb_run_name']}-{varied_suffix}"
+        else:
+             current_cfg_dict["wandb_run_name"] = varied_suffix
             
         configs.append(ExperimentConfig.from_dict(current_cfg_dict))
         

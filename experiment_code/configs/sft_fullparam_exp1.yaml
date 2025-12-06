@@ -1,29 +1,43 @@
-experiment_name: Full Param SFT, 70M Params, Alpaca
+# main
+experiment_name: Full Param SFT, 70M Params, Alpaca, BATCH SHARPNESS
+seed: 42
 
+# wandb
 use_wandb: true
 wandb_project: post_training_eos
-wandb_run_name: sft_fullparam_demo
+wandb_run_name: sft_fullparam_exp1
 wandb_group: sft_fullparam
 
+# model
 model_name: EleutherAI/pythia-70m
 use_lora: false
 
+# data
 dataset_name: alpaca
-max_length: 2048
-subsample_size: 20000
+max_length: 1024
+subsample_size: 10000
 
-batch_size: 1
+# optimization
+batch_size: 4
 optimizer: sgd
-learning_rate: [0.001, 0.01, 0.1, 1]
+learning_rate: [5e-4, 1e-4, 1e-3]
+max_grad_norm: 10.0
 weight_decay: 1e-4
 momentum: 0.9
 
-eval_interval: 1000
-save_interval: 5000
-max_steps: 10000
+# saving, device
+eval_interval: 100
+save_interval: 10000
+max_steps: 150000
 device: cuda
 
-gradient_checkpointing: false
-compute_global_sharpness: false
-compute_block_sharpness: true
+# EoS Stuff
+compute_spectral_sharpness: false
+compute_batch_sharpness: true
+
+compute_global_sharpness: true
+compute_block_sharpness: false
 sharpness_layer_indices: [-1]
+
+# misc
+gradient_checkpointing: false
