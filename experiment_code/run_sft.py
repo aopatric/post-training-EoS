@@ -127,22 +127,22 @@ def train(config: ExperimentConfig):
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
 
     # Create a fixed batch for EoS metrics to ensure consistency (reduce noise from data)
-    print("Creating fixed validation batch for EoS metrics...")
+    # print("Creating fixed validation batch for EoS metrics...")
     
     # Reuse the SAME dataset object, just select a small subset for the eval loader
     # This avoids reloading/retokenizing
-    eval_subset = full_dataset.select(range(min(100, len(full_dataset))))
+    # eval_subset = full_dataset.select(range(min(100, len(full_dataset))))
     
-    eval_dataloader = get_sft_dataloader(
-        dataset_name=config.dataset_name,
-        tokenizer=tokenizer,
-        batch_size=config.eval_batch_size, # Use separate small batch size for eval
-        max_length=config.max_length,
-        seed=config.seed + 1, 
-        dataset=eval_subset # Reuse subset
-    )
-    eval_batch = next(iter(eval_dataloader))
-    eval_batch = {k: v.to(device) for k, v in eval_batch.items()}
+    # eval_dataloader = get_sft_dataloader(
+    #     dataset_name=config.dataset_name,
+    #     tokenizer=tokenizer,
+    #     batch_size=config.eval_batch_size, # Use separate small batch size for eval
+    #     max_length=config.max_length,
+    #     seed=config.seed + 1, 
+    #     dataset=eval_subset # Reuse subset
+    # )
+    # eval_batch = next(iter(eval_dataloader))
+    # eval_batch = {k: v.to(device) for k, v in eval_batch.items()}
     
     # Training Loop
     model.train()
@@ -150,6 +150,9 @@ def train(config: ExperimentConfig):
     data_iter = iter(dataloader)
     
     step = 0
+    micro_step = 0
+    optimizer.zero_grad() # Initialize gradients
+    
     while step < config.max_steps:
         try:
             batch = next(data_iter)
@@ -161,7 +164,8 @@ def train(config: ExperimentConfig):
         batch = {k: v.to(device) for k, v in batch.items()}
         
         # --- EoS Metric Tracking ---
-        if step % config.eval_interval == 0:
+        # Only run metrics at the start of an optimization step
+        if step % config.eval_interval == 0 and micro_step % config.gradient_accumulation_steps == 0:
             print(f"Step {step}: Computing sharpness...")
             
             # Define loss function wrapper for metrics
@@ -262,13 +266,13 @@ def train(config: ExperimentConfig):
             # A. Spectral Sharpness (Lanczos)
             if config.compute_spectral_sharpness:
                 if config.compute_global_sharpness:
-                    res = compute_sharpness(model, loss_wrapper, eval_batch, block_names=None)
+                    res = compute_sharpness(model, loss_wrapper, batch, block_names=None)
                     val = res.get('global', 0.0)
                     global_metrics['global_spectral_sharpness'] = val
                     print(f"Step {step}: Spectral Sharpness (Global) = {val:.4f}")
                 
                 if config.compute_block_sharpness and actual_block_names:
-                    block_results = compute_sharpness(model, loss_wrapper, eval_batch, block_names=actual_block_names)
+                    block_results = compute_sharpness(model, loss_wrapper, batch, block_names=actual_block_names)
                     # Store for logging later
                     global_metrics['block_spectral_results'] = block_results
 
@@ -278,13 +282,13 @@ def train(config: ExperimentConfig):
                 from src.metrics import compute_batch_sharpness
                 
                 if config.compute_global_sharpness:
-                    res = compute_batch_sharpness(model, loss_wrapper, eval_batch, block_names=None)
+                    res = compute_batch_sharpness(model, loss_wrapper, batch, block_names=None)
                     val = res.get('global', 0.0)
                     global_metrics['global_batch_sharpness'] = val
                     print(f"Step {step}: Batch Sharpness (Global) = {val:.4f}")
                 
                 if config.compute_block_sharpness and actual_block_names:
-                    block_results = compute_batch_sharpness(model, loss_wrapper, eval_batch, block_names=actual_block_names)
+                    block_results = compute_batch_sharpness(model, loss_wrapper, batch, block_names=actual_block_names)
                     global_metrics['block_batch_results'] = block_results
             
             if not config.compute_global_sharpness:
@@ -334,25 +338,33 @@ def train(config: ExperimentConfig):
         # --- Optimization Step ---
         outputs = model(**batch)
         loss = outputs.loss
+        
+        # Scale loss for gradient accumulation
+        loss = loss / config.gradient_accumulation_steps
         loss.backward()
         
-        # Gradient Clipping
-        if config.max_grad_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+        micro_step += 1
         
-        optimizer.step()
-        optimizer.zero_grad()
-        
-        progress_bar.update(1)
-        progress_bar.set_postfix(loss=loss.item())
-        step += 1
-        
-        # Save Checkpoint
-        if step % config.save_interval == 0:
-            save_path = output_dir / f"checkpoint-{step}"
-            model.save_pretrained(save_path)
-            tokenizer.save_pretrained(save_path)
-            print(f"Saved checkpoint to {save_path}")
+        # Perform optimizer step only after accumulating enough gradients
+        if micro_step % config.gradient_accumulation_steps == 0:
+            # Gradient Clipping
+            if config.max_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+            
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            progress_bar.update(1)
+            # Log the actual loss (unscaled) for the user
+            progress_bar.set_postfix(loss=loss.item() * config.gradient_accumulation_steps)
+            step += 1
+            
+            # Save Checkpoint
+            if step % config.save_interval == 0:
+                save_path = output_dir / f"checkpoint-{step}"
+                model.save_pretrained(save_path)
+                tokenizer.save_pretrained(save_path)
+                print(f"Saved checkpoint to {save_path}")
             
     # Save Final Model
     final_path = output_dir / "final_model"

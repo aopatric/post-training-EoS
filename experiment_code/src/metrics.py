@@ -78,9 +78,9 @@ def lanczos(
         # Check if vector has NaNs (SciPy might pass them if previous steps failed)
         # But here we just run eigsh.
         
-        evals, _ = eigsh(operator, k=neigs, which='LM', tol=1e-2)
-        # Return the largest magnitude eigenvalue
-        return float(np.max(np.abs(evals)))
+        evals, _ = eigsh(operator, k=neigs, which='LA', tol=1e-6, maxiter=1000)
+        # Return the largest algebraic eigenvalue
+        return float(np.max(evals))
     except Exception as e:
         print(f"Lanczos failed: {e}")
         return 0.0

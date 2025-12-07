@@ -15,20 +15,21 @@ use_lora: false
 # data
 dataset_name: alpaca
 max_length: 1024
-subsample_size: 10000
+subsample_size: 50000
 
 # optimization
 batch_size: 4
+gradient_accumulation_steps: 4
 optimizer: sgd
-learning_rate: [5e-4, 1e-4, 1e-3]
+learning_rate: [5e-5, 1e-4, 5e-4, 1e-3]
 max_grad_norm: 10.0
-weight_decay: 1e-4
+weight_decay: 1e-5
 momentum: 0.9
 
-# saving, device
+# saving, device, short experiment for now since we need to get graphs!
 eval_interval: 100
-save_interval: 10000
-max_steps: 150000
+save_interval: 5000
+max_steps: 50000
 device: cuda
 
 # EoS Stuff

@@ -34,7 +34,7 @@ class ExperimentConfig:
     
     # training/opt
     batch_size: int = 8
-    eval_batch_size: int = 2 # Small batch for expensive metrics
+    gradient_accumulation_steps: int = 1
     optimizer: str = "adamw"
     learning_rate: float = 1e-4
     weight_decay: float = 0.0
@@ -60,6 +60,8 @@ class ExperimentConfig:
             self.learning_rate = float(self.learning_rate)
         if self.batch_size is not None:
             self.batch_size = int(self.batch_size)
+        if self.gradient_accumulation_steps is not None:
+            self.gradient_accumulation_steps = int(self.gradient_accumulation_steps)
         if self.max_steps is not None:
             self.max_steps = int(self.max_steps)
         if self.eval_interval is not None:
