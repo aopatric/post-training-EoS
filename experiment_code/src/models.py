@@ -103,11 +103,11 @@ def load_base_model(model_name: str, seed: int = 42, **kwargs) -> PreTrainedMode
 
     # Check for dry run argument
     use_mlp_dry_run = kwargs.pop("use_mlp_dry_run", False)
+    width = kwargs.pop("dry_run_mlp_width", 1024)
+    depth = kwargs.pop("dry_run_mlp_depth", 2)
     
     if use_mlp_dry_run:
         print("!!! DRY RUN MODE ENABLED: USING SIMPLE MLP !!!")
-        width = kwargs.pop("dry_run_mlp_width", 1024)
-        depth = kwargs.pop("dry_run_mlp_depth", 2)
         
         # We still need a tokenizer later, so we assume vocab size is standard (e.g. GPT-NeoX)
         # Or ideally we get it from the tokenizer, but here we just hardcode a safe default or make it configurable

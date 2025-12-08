@@ -8,6 +8,7 @@ import numpy as np
 from typing import List, Dict, Optional, Callable, Tuple, Any
 from scipy.sparse.linalg import LinearOperator, eigsh
 from torch.nn.utils import parameters_to_vector
+from torch.autograd import grad
 
 def compute_hvp(
     model: torch.nn.Module,
@@ -78,7 +79,7 @@ def lanczos(
         # Check if vector has NaNs (SciPy might pass them if previous steps failed)
         # But here we just run eigsh.
         
-        evals, _ = eigsh(operator, k=neigs, which='LA', tol=1e-6, maxiter=1000)
+        evals, _ = eigsh(operator, k=neigs, which='LA', tol=1e-6, maxiter=10000)
         # Return the largest algebraic eigenvalue
         return float(np.max(evals))
     except Exception as e:
@@ -317,6 +318,158 @@ def compute_batch_sharpness(
             p.requires_grad = state
             
     return results
+
+def compute_ias(
+    model: torch.nn.Module,
+    loss_fn: Callable[[torch.nn.Module, Any], torch.Tensor],
+    dataloader: Any,
+    mc_samples: int = 32,
+    block_names: Optional[List[str]] = None
+) -> Dict[str, float]:
+    """
+    Estimates the Interaction-Aware Sharpness (IAS) of the model's current state
+    using Monte Carlo sampling and the Hessian-Vector Product (HvP).
+    
+    Adaptation of the snippet provided by the user to fit the codebase conventions.
+    """
+    results = {}
+    
+    # Check dataloader length if possible
+    try:
+        total_batches = len(dataloader)
+        if mc_samples > total_batches:
+            print(f"Warning: Requested {mc_samples} samples, but DataLoader only has {total_batches} batches. Using max batches.")
+            mc_samples = total_batches
+    except:
+        pass # Iterable dataset or unknown length
+
+    if mc_samples == 0:
+        return results
+
+    # Tensors to accumulate the sums of the numerator and denominator components
+    # We will compute GLOBAL IAS
+    numerator_sum = 0.0
+    denominator_sum = 0.0
+    
+    # 1. Freeze model and set to evaluation mode
+    # Store original training mode
+    was_training = model.training
+    model.eval()
+    
+    # 2. Reset the DataLoader iterator to ensure fresh sampling
+    data_iterator = iter(dataloader)
+    
+    # Identify trainable parameters
+    params = [p for p in model.parameters() if p.requires_grad]
+    if not params:
+        if was_training: model.train()
+        return {}
+        
+    device = params[0].device
+    
+    # Prepare for block-wise if requested
+    # We will only support global for now in this pass to ensure correctness of the complex metric
+    # But we can allow 'global' key in results.
+    
+    for i in range(mc_samples):
+        try:
+            # Get the next batch
+            batch = next(data_iterator)
+        except StopIteration:
+            break
+
+        # Move batch to device (dataloader usually does this, but run_sft manual loop does it)
+        # Inside run_sft, the dataloader yields cpu tensors usually, and we move them.
+        # But here we are passed the dataloader directly.
+        # We need to ensure batch is on device.
+        if isinstance(batch, dict):
+             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        elif isinstance(batch, (list, tuple)):
+             batch = [v.to(device) if isinstance(v, torch.Tensor) else v for v in batch]
+
+        # --- Phase 1: Calculate the Mini-Batch Gradient (g_xi) ---
+        
+        # Zero previous gradients
+        model.zero_grad()
+        
+        # Forward pass and loss calculation
+        # The loss_fn wrapper handles the forward pass: loss_fn(model, batch) -> tensor
+        loss = loss_fn(model, batch)
+
+        # First backward pass computes dL/d(params) = g_xi
+        # We use create_graph=True to allow for the second derivative calculation (HvP)
+        # We need to manually call grad() because loss.backward() accumulates in .grad which is harder to HVP
+        
+        gradients = grad(loss, params, create_graph=True, retain_graph=True)
+
+        # --- Phase 2: Calculate Denominator (||g_xi||^2) ---
+        # Component: ||g_xi||^2
+        
+        # Optimization: Flatten gradients once
+        flat_grads = parameters_to_vector(gradients)
+        grad_norm_sq = flat_grads.pow(2).sum()
+        denominator_sum += grad_norm_sq.item()
+
+        # --- Phase 3: Calculate Numerator (g_xi^T * H * g_xi) via HvP ---
+        # The quantity g_xi^T * H * g_xi is the second directional derivative (HvP) 
+        # of the loss function L, evaluated along the direction of the gradient g_xi.
+
+        # Calculate the Hessian-Vector Product (H * g_xi) where the vector is g_xi itself.
+        # We need the HvP: H * g_xi
+        
+        # In the user snippet:
+        # hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
+        # That syntax suggests gradient of gradients?
+        # torch.autograd.grad(outputs, inputs, grad_outputs=...) 
+        # If outputs is a list of tensors (gradients), we need grad_outputs.
+        
+        # User snippet:
+        # hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
+        # This computes sum(gradients * grad_outputs) gradients?
+        # d/d_params ( sum(gradients_i * gradients_i) ) ? 
+        # Yes, if you pass grad_outputs=gradients, it computes grad( sum(gradients * gradients) ).
+        # Wait, standard Jacobian-vector product.
+        # if y = gradients(x). We want J * v. 
+        # torch.autograd.grad(y, x, grad_outputs=v) computes v^T * J.
+        # Since Hessian is symmetric, J = H. v^T H = (H v)^T.
+        # So yes, this gives H * g_xi.
+        
+        hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
+
+        # Component: g_xi^T * (H * g_xi)
+        # This is the dot product of the original gradient g_xi and the HvP (H * g_xi)
+        
+        # User snippet:
+        # g_T_H_g = sum(torch.sum(g_i * hv_i) for g_i, hv_i in zip(gradients, hv_product))
+        
+        # We can use flattened versions
+        flat_hv = parameters_to_vector(hv_product)
+        
+        # We used flat_grads for detached vector for dot product
+        # Ensure we use the proper graph-connected variables if needed?
+        # The user snippet sums them up.
+        # numerator_sum += g_T_H_g.detach()
+        # We only need the scalar value for the accumulation.
+        
+        g_T_H_g = flat_grads.mul(flat_hv).sum()
+        numerator_sum += g_T_H_g.item()
+        
+        # Clean up graph
+        # del gradients, hv_product, loss
+        # params are kept
+        
+    # 4. Final IAS Calculation
+    if denominator_sum == 0:
+        results['global'] = 0.0
+    else:
+        results['global'] = numerator_sum / denominator_sum
+    
+    # Restore model mode
+    if was_training:
+        model.train()
+    
+    return results
+
 
 if __name__ == "__main__":
     print("Metrics module (Manual HVP version)")

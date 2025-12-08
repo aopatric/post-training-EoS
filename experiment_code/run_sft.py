@@ -294,6 +294,19 @@ def train(config: ExperimentConfig):
                     block_results = compute_batch_sharpness(model, loss_wrapper, batch, block_names=actual_block_names)
                     global_metrics['block_batch_results'] = block_results
             
+            # C. Interaction-Aware Sharpness (IAS)
+            if config.compute_ias:
+                from src.metrics import compute_ias
+                # We use the training dataloader for this estimation
+                print(f"Step {step}: Computing Interaction-Aware Sharpness (IAS)...")
+                # Note: compute_ias creates its own iterator from the dataloader, so it won't consume the main training loop's iterator
+                ias_results = compute_ias(model, loss_wrapper, dataloader, mc_samples=config.ias_num_samples, block_names=None)
+                
+                if 'global' in ias_results:
+                    val = ias_results['global']
+                    global_metrics['global_ias'] = val
+                    print(f"Step {step}: IAS (Global) = {val:.4f}")
+            
             if not config.compute_global_sharpness:
                 print(f"Step {step}: EoS evaluation complete (Global skipped)")
             
@@ -318,6 +331,11 @@ def train(config: ExperimentConfig):
                 val = global_metrics['global_batch_sharpness']
                 metrics["global_batch_sharpness"] = val
                 metrics["global_batch_sharpprod"] = val * config.learning_rate
+            
+            if 'global_ias' in global_metrics:
+                val = global_metrics['global_ias']
+                metrics["global_ias"] = val
+                metrics["global_ias_sharpprod"] = val * config.learning_rate
             
             # Add block metrics using friendly names
             if 'block_spectral_results' in global_metrics:

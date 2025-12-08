@@ -54,6 +54,10 @@ class ExperimentConfig:
     compute_block_sharpness: bool = True
     sharpness_layer_indices: Optional[List[int]] = None
     
+    # Interaction-Aware Sharpness
+    compute_ias: bool = False
+    ias_num_samples: int = 32
+    
     # dry run
     use_mlp_dry_run: bool = False
     dry_run_mlp_width: int = 1024
@@ -87,6 +91,8 @@ class ExperimentConfig:
             self.dry_run_mlp_width = int(self.dry_run_mlp_width)
         if self.dry_run_mlp_depth is not None:
             self.dry_run_mlp_depth = int(self.dry_run_mlp_depth)
+        if self.ias_num_samples is not None:
+            self.ias_num_samples = int(self.ias_num_samples)
 
     
     @classmethod

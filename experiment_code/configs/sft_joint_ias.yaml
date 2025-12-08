@@ -5,39 +5,45 @@ seed: 42
 # wandb
 use_wandb: true
 wandb_project: post_training_eos
-wandb_run_name: sft_fullparam_exp1
+wandb_run_name: sft_fullparam
 wandb_group: sft_fullparam
 
 # model
 model_name: EleutherAI/pythia-70m
-use_lora: false
+
+# iterate over use_lora as WELL, get things done in one config
+use_lora: [false, true]
+
 
 # data
 dataset_name: alpaca
 max_length: 1024
-subsample_size: 50000
+subsample_size: 2500
 
 # optimization
 batch_size: 4
 gradient_accumulation_steps: 4
 optimizer: sgd
-learning_rate: [5e-5, 1e-4, 5e-4, 1e-3]
+learning_rate: [1e-3, 1e-3]
 max_grad_norm: 10.0
 weight_decay: 1e-5
 momentum: 0.9
 
 # saving, device, short experiment for now since we need to get graphs!
-eval_interval: 100
-save_interval: 5000
-max_steps: 50000
+eval_interval: 1000
+save_interval: 10000
+max_steps: 100000
 device: cuda
 
 # EoS Stuff
 compute_spectral_sharpness: false
-compute_batch_sharpness: true
+compute_batch_sharpness: false
+compute_ias: true
+ias_num_samples: 32
+
 
 compute_global_sharpness: true
-compute_block_sharpness: false
+compute_block_sharpness: true
 sharpness_layer_indices: [-1]
 
 # misc
