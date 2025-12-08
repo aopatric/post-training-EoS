@@ -55,7 +55,10 @@ def train(config: ExperimentConfig):
     # Force FP32 for stability in sharpness computation
     model_kwargs = {
         "attn_implementation": "eager",
-        "torch_dtype": torch.float32
+        "torch_dtype": torch.float32,
+        "use_mlp_dry_run": config.use_mlp_dry_run,
+        "dry_run_mlp_width": config.dry_run_mlp_width,
+        "dry_run_mlp_depth": config.dry_run_mlp_depth
     }
     
     if config.use_lora:

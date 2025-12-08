@@ -53,6 +53,11 @@ class ExperimentConfig:
     compute_global_sharpness: bool = True
     compute_block_sharpness: bool = True
     sharpness_layer_indices: Optional[List[int]] = None
+    
+    # dry run
+    use_mlp_dry_run: bool = False
+    dry_run_mlp_width: int = 1024
+    dry_run_mlp_depth: int = 2
 
     def __post_init__(self):
         # force cast types
@@ -78,6 +83,10 @@ class ExperimentConfig:
             self.lora_alpha = int(self.lora_alpha)
         if self.lora_dropout is not None:
             self.lora_dropout = float(self.lora_dropout)
+        if self.dry_run_mlp_width is not None:
+            self.dry_run_mlp_width = int(self.dry_run_mlp_width)
+        if self.dry_run_mlp_depth is not None:
+            self.dry_run_mlp_depth = int(self.dry_run_mlp_depth)
 
     
     @classmethod
