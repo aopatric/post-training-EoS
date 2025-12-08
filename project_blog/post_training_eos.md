@@ -74,14 +74,56 @@ Due to memory constraints, we were unable to perform batch GD experiments to stu
 
 Experiments were conducted for 50000 training steps on a 50000-sample subsample of the Alpaca dataset [@alpaca], and we report the batch sharpness metric from [@EoSS] for comparison as well as the product $\lambda_{\max} \cdot \eta$ for clear comparison to the expected threshold value of $2$.
 
-#### Note: On The Sharpness Calculation
+Due to some surprising initial results, we ran an additional baseline using an MLP to replicate established results from [@EoS].
+
+## Results
+
+### Note: On The Sharpness Calculation
 
 A problem commonly faced by work in EoS is the computatoinal cost of the sharpness calculation. The original work [@EoS] gets around this issue using Hessian-vector products to avoid realizing the full Hessian matrix, a strategy that we largely borrow in this work. Since we are also working with quite low batch sizes (again due to memory constraints), we use this same strategy to calculate the *batch sharpness* metric from [@EoSS].
 
 The sharpness calculation is performed by taking a Hessian-vector product and calling a standard implementation of Lanczos iteration to compute the largest eigenvalue of the Hessian.
 
-## Results and Discussion
+### Experimental Results
 
-## References
+Experimental results are presented below. Notably, we observe a clear *lack* of EoS emergence in the post-training phase of language models. That is, it appears that the batch gradient signal applicable and used in much of the EoS literature is overrun by noise in the post-training phase.
 
-Empty! Put the stuff I referred to HERE at some point!
+![llm_full_sharpness](images/llm_full_sharpness.png)
+
+![llm_full_sharpprod](images/llm_full_sharpprod.png)
+
+The above pair of figures show the raw batch sharpness quantity (solid lines) plotted against the target threshold (dashed lines) in the first figure as well as the product $\lambda_{\max} \cdot \eta$ in the second figure.  Our characterization of "EoS" in this case *should* look like the quantities in the first figure rising to the dashed lines, and the values in the second figure rising to $2$.
+
+Notably, we observe behavior which unmistakably does *not* follow this pattern. In fact, the sharpness fluctuates by several orders of magnitude (including reaching negative values several times), and the product $\lambda_{\max} \cdot \eta$ never stabilizes at $2$.
+
+This result goes against the hypotheses as we are seeing a complete lack of EoS emergence in the post-training phase of language models, beyond just a muted one.
+
+The below pair of figures shows these same quantities, but tracked for the experiments using a set of LoRA adapters of rank $8$ targeting all modules.
+
+![llm_lora_sharpness](images/llm_lora_sharpness.png)
+
+![llm_lora_sharpprod](images/llm_lora_sharpprod.png)
+
+It is once again visibly clear that the EoS phenomenon does not emerge in the post-training phase of language models, even when using a parameter-efficient method of fine-tuning. This implies that there is some fundmental difference between the fine-tuning phase and the post-training phase of language models, at least at the level of the batch gradient signal.
+
+The same target behavior was expected for the LoRA experiments as was expected for the full model experiments, but the same behavior was not observed. The plots of these two quantities seem to be mostly dominated by random noise, contradicting the notion of the batch sharpness as a reliable metric for characterizing the EoS phenomenon in the context of large language models.
+
+Due to the surprising nature of these initial results, we ran an additional baseline using an MLP to replicate established results from [@EoS]. Notably, we see a clear pattern of progressive sharpening, with the product $\lambda_{\max} \cdot \eta$ clearly rising as training progresses. Due to compute and time constraints, *all experiments* were ran to 50,000 iterations; however, while the MLP experiments show clean progressive sharpening, the true EoS phase is not reached in the fixed step budget. Graphs are below.
+
+GRAPH1
+
+GRAPH2
+
+Comparing the visuals of the MLP experiments to the language model experiments, it is clear that the batch sharpness metric is not a reliable metric for characterizing the EoS phenomenon in the context of large language models.
+
+## Conclusion
+
+Overall, the results of this experiment suggest that the batch sharpness metric is not a reliable metric for characterizing the EoS phenomenon in the context of large language models. That is, despite the fact that when we train with an MLP we *do* see signs of EoS, making the modification to the setting by introducing a significantly larger model size at a conservative batch size introduces noise which dominates the batch sharpness signal.
+
+However, this does not necessarily mean that the EoS phenomenon has no analog in the context of post-training. In fact, it is possible that the batch sharpness metric is simply not the right metric for this task, and that the EoS phenomenon manifests in a different way in the context of post-training. Future work should explore this possibility.
+
+Additionally, another factor which we acknowledge could impact the emergence of EoS in the post-training phase is consequences of the experiment setup; due to limitations with memory and time, we were unable to perform batch GD experiments (on a signficiantly smaller data subsample) to study the impact of full-batch GD on the EoS phenomenon in LMPT. Future work should additionally explore this possibility.
+
+A final potential culprit is numerical instability at such large model sizes; the largely negative and unstable behavior of the batch sharpness could be caused by the extreme dimensionality of the problem causing issues with the Lanczos iteration used to compute the largest eigenvalue of the Hessian. Future work should explore a new method of compute relevant metrics beyond that established by the literature. ([@EoS], [@EoSS]).
+
+To this end, we must continue to look for the edge of stability in LMPT, in the hope of generalizing some of the implications from [@EoS].

@@ -3,7 +3,7 @@ Module for loading models (Full-Parameter and LoRA) for experiments.
 """
 
 import torch
-from transformers import AutoModelForCausalLM, PreTrainedModel
+from transformers import AutoModelForCausalLM, PreTrainedModel, PretrainedConfig
 from peft import get_peft_model, LoraConfig, TaskType, PeftModel
 from typing import Optional, Union, Dict, Any
 
@@ -15,18 +15,14 @@ from typing import Optional, Union, Dict, Any
 # Simple MLP for Dry Runs
 # ==============================
 
-class SimpleMLPConfig:
+class SimpleMLPConfig(PretrainedConfig):
+    model_type = "simple_mlp"
+    
     def __init__(self, vocab_size=50257, hidden_size=1024, num_layers=2, **kwargs):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.architectures = ["SimpleMLP"]
-        self.model_type = "simple_mlp"
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-            
-    def to_dict(self):
-        return self.__dict__
+        super().__init__(**kwargs)
 
 class SimpleBlock(torch.nn.Module):
     def __init__(self, config):
