@@ -2,6 +2,7 @@
 author: "Angel Patricio"
 date: 2025-12-07
 keywords: [LLM, stability, optimization, post-training, EoS]
+bibliography: references.bib
 ---
 
 # An Edge of Stability For Language Model Post-Training
@@ -32,17 +33,13 @@ EoS has been observed in a variety of deep learning architectures including stan
 
 Another heavily explored axis in the EoS literature is the role of the *optimizer*. In particular, [@EoSS] revisits the EoS idea in the context of optimizing with SGD, since [@EoS] focuses only on the batch GD case and considers only the *full-batch* (spectral) Hessian sharpness. Authors study the **batch sharpness** given by:
 
-$$
-\text{Batch Sharpness}(\theta) = \frac{\mathbb E _{B \sim \mathcal P_B}[\nabla L_B(\theta)^\top \mathcal H (L_\mathbf B) \nabla L_B(\theta)]}{\mathbb E _{B \sim \mathcal P_b}[\| \nabla L_\mathbf B (\theta) \|^2]}
-$$
+$$\text{Batch Sharpness}(\theta) = \frac{\mathbb E _{B \sim \mathcal P_B}[\nabla L_B(\theta)^\top \mathcal H (L_\mathbf B) \nabla L_B(\theta)]}{\mathbb E _{B \sim \mathcal P_b}[\| \nabla L_\mathbf B (\theta) \|^2]}$$
 
 And track this metric as a function of training progress. The result is that this batch sharpness quantity reaches a similar $ 2 / \eta $ threshold as the full-batch sharpness in [@EoS] while the batch sharpness under SGD settles at a lower value than the $ 2 / \eta $ threshold. Authors argue that especially for smaller batch sizes, the **Edge of (Stochastic) Stability (EoSS)** phenomenon is largely governed by this batch sharpness quantity instead of the full-batch sharpness.
 
 Similar work analyzes the emergence of EoS in the context of *adaptive gradient methods* [@AEoS]. In this work the authors analyze the EoS dynamics when using adaptive gradient methods such as Adam and rmsprop, confirming typical EoS dynamics when operating with "frozen" Adam (preconditioned, no dynamic updates to the preconditioner). Interestingly, authors discover a new regime of training where the sharpness of the *preconditioned* Hessian $P^{-1} \mathcal H$ (for given preconditioning matrix $P$) governs what they call the **Adaptive Edge of Stability (AEoS)**. During this regime, the *raw* sharpness quantity $\lambda_{\max}$ *continues to rise*, even beyond the original $2 / \eta$ threshold. It is this preconditioned sharpness quantity that reaches a threshold
 
-$$
-\lambda_1(P^{-1} \mathcal H) \approx \frac{(2 + 2 \beta_1)}{(1 - \beta_1)\eta}
-$$
+$$\lambda_1(P^{-1} \mathcal H) \approx \frac{(2 + 2 \beta_1)}{(1 - \beta_1)\eta}$$
 
 (for relevant Adam hyperparameter $\beta_1$) and oscillates throughout the AEoS phase.
 
@@ -64,15 +61,15 @@ At a high level, we hypothesize that, if EoS is truly an instrinsic phenomenon o
 
 To isolate the fine-tuning dynamics, we borrow the openly available **Pythia** [@pythia] suite of pre-trained language models. These models largely follow the proven architecutre recipe of GPT-3 [@gpt3]. Importantly, these models have *not* seen any form of instruction or otherwise fine-tuning updates, and are trained exclusively on the Pile [@pile1] [@pile2]. These models were chosen for the purpose of providing a clean baseline language model for this study of EoS dynamics.
 
-We choose to fine-tune the models using the Alpaca dataset [@alpaca], which is a dataset of 52002 instruction-following examples, some including "input" fields for chat-style interaction. This dataset is established in the literature as a standard dataset for instruction tuning and alignment of language models.
+We chose to fine-tune the models using the Alpaca dataset [@alpaca], which is a dataset of 52002 instruction-following examples, some including "input" fields for chat-style interaction. This dataset is established in the literature as a standard dataset for instruction tuning and alignment of language models.
 
 To broaden the range of post-training situations we also repeat experiments using **Low-Rank Adaptation (LoRA)** [@lora] for parameter-efficient fine-tuning (PEFT). This method reduces the amount of trainable parameters for the fine-tuning run by learning only a low-rank decomposition of the full parameter matrix. We include this method to study the impact of practical changes to the fine-tuning formula on the EoS phenomenon.
 
-Training runs were performed using rented compute resources from the rental platform [Vast.ai](https://vast.ai/), which was used to rent a single 4090 instance for experiments over the course of about 20-30 hours of compute time. We optimize using SGD while sweeping the learning rate from small (used in practice, $\sim 1e^{-4}$) to large (practically inapplicable, $\sim 1e^{-2}$) values. There is a fixed momentum of $0.9$ used for all runs as well as a fixed L2 weight decay of $1e^{-4}$.
+Training runs were performed using rented compute resources from the rental platform [Vast.ai](https://vast.ai/), which was used to rent a single 4090 instance for experiments over the course of about 40-60 hours of compute time. We optimize using SGD while sweeping the learning rate from small (used in practice, $\sim 1e^{-4}$) to large (practically inapplicable, $\sim 1e^{-2}$) values. There is a fixed momentum of $0.9$ used for all runs as well as a fixed L2 weight decay of $1e^{-4}$.
 
-Due to memory constraints, we were unable to perform batch GD experiments to study the impact of full-batch GD on the EoS phenomenon in LMPT. Therefore, we only report the batch sharpness metric from [@EoSS] for comparison. We use a fixed effective batch size of $16$ for all runs, achieved with $4$ steps of accumulation with batch size $4$.
+Due to memory constraints, we were unable to perform batch GD experiments to study the impact of full-batch GD on the EoS phenomenon in LMPT. Therefore, we only report the batch sharpness metric from [@EoSS] for comparison, in place of the spectral sharpness metric from the original work [@EoS] (note: we *did* calculate this for short experiments, but the results followed the rest of the quantites and the others were much easier to compute at larger scale). We use a fixed effective batch size of $16$ for all runs, achieved with $4$ steps of accumulation with batch size $4$.
 
-Experiments were conducted for 50000 training steps on a 50000-sample subsample of the Alpaca dataset [@alpaca], and we report the batch sharpness metric from [@EoSS] for comparison as well as the product $\lambda_{\max} \cdot \eta$ for clear comparison to the expected threshold value of $2$.
+Experiments were conducted for 50000 training steps on a 5000-sample subsample of the Alpaca dataset [@alpaca], and we report the batch sharpness metric from [@EoSS] for comparison as well as the product $\lambda_{\max} \cdot \eta$ for clear comparison to the expected threshold value of $2$.
 
 Due to some surprising initial results, we ran an additional baseline using an MLP to replicate established results from [@EoS].
 
@@ -88,9 +85,9 @@ The sharpness calculation is performed by taking a Hessian-vector product and ca
 
 Experimental results are presented below. Notably, we observe a clear *lack* of EoS emergence in the post-training phase of language models. That is, it appears that the batch gradient signal applicable and used in much of the EoS literature is overrun by noise in the post-training phase.
 
-![llm_full_sharpness](images/llm_full_sharpness.png)
+![LLM Full Sharpness](images/llm_full_sharpness.png){width=75%, align=center, text-align=center}
 
-![llm_full_sharpprod](images/llm_full_sharpprod.png)
+![LLM Full Product](images/llm_full_sharpprod.png){width=75%, align=center, text-align=center}
 
 The above pair of figures show the raw batch sharpness quantity (solid lines) plotted against the target threshold (dashed lines) in the first figure as well as the product $\lambda_{\max} \cdot \eta$ in the second figure.  Our characterization of "EoS" in this case *should* look like the quantities in the first figure rising to the dashed lines, and the values in the second figure rising to $2$.
 
@@ -100,30 +97,36 @@ This result goes against the hypotheses as we are seeing a complete lack of EoS 
 
 The below pair of figures shows these same quantities, but tracked for the experiments using a set of LoRA adapters of rank $8$ targeting all modules.
 
-![llm_lora_sharpness](images/llm_lora_sharpness.png)
+![LLM LoRA Sharpness](images/llm_lora_sharpness.png){width=75%, align=center, text-align=center}
 
-![llm_lora_sharpprod](images/llm_lora_sharpprod.png)
+![LLM LoRA Product](images/llm_lora_sharpprod.png){width=75%, align=center, text-align=center}
 
 It is once again visibly clear that the EoS phenomenon does not emerge in the post-training phase of language models, even when using a parameter-efficient method of fine-tuning. This implies that there is some fundmental difference between the fine-tuning phase and the post-training phase of language models, at least at the level of the batch gradient signal.
 
 The same target behavior was expected for the LoRA experiments as was expected for the full model experiments, but the same behavior was not observed. The plots of these two quantities seem to be mostly dominated by random noise, contradicting the notion of the batch sharpness as a reliable metric for characterizing the EoS phenomenon in the context of large language models.
 
-Due to the surprising nature of these initial results, we ran an additional baseline using an MLP to replicate established results from [@EoS]. Notably, we see a clear pattern of progressive sharpening, with the product $\lambda_{\max} \cdot \eta$ clearly rising as training progresses. Due to compute and time constraints, *all experiments* were ran to 50,000 iterations; however, while the MLP experiments show clean progressive sharpening, the true EoS phase is not reached in the fixed step budget. Graphs are below.
+Due to the surprising nature of these initial results, we ran an additional baseline using an MLP to replicate established results from [@EoS]. Notably, we see a clear pattern of progressive sharpening, with the product $\lambda_{\max} \cdot \eta$ clearly rising as training progresses at first. However, this quantity *also* does not reach the target value of 2, which could be due to numerical instability (see Conclusion). Due to compute and time constraints, *all experiments* were ran to 50,000 iterations; however, while the MLP experiments show clear signs of progressive sharpening, the true EoS phase is not reached in the fixed step budget. Graphs are below.
 
-GRAPH1
+![MLP Batch Sharpness](images/mlp_batch_sharpness.png){width=75%, align=center, text-align=center}
 
-GRAPH2
+![MLP Product](images/mlp_sharpprod.png){width=75%, align=center, text-align=center}
 
-Comparing the visuals of the MLP experiments to the language model experiments, it is clear that the batch sharpness metric is not a reliable metric for characterizing the EoS phenomenon in the context of large language models.
+Comparing the visuals of the MLP experiments to the language model experiments, it is clear that the batch sharpness metric is not a reliable metric for characterizing the EoS phenomenon in the context of large language models. Nonetheless, there remained one more metric to try: the **interaction-aware sharpness** as defined in [@ias]. This metric seeks to remove the impact of batch size interactions with the gradient landscape by using monte carlo to get a stronger estimate of true sharpness. We reran experiments for a final time, tracking the interaction-aware sharpness metric for both the full model and LoRA experiments. Graphs are below.
+
+![Interaction-Aware Sharpness](images/ias_sharpness.png){width=75%, align=center, text-align=center}
+
+![Interaction-Aware Product](images/ias_product.png){width=75%, align=center, text-align=center}
+
+As you can see, this *most robust* quantity *still* fails to reveal signs of EoS. With all this in mind, we can make some conclusions about an EoS phenomena for post-training.
 
 ## Conclusion
 
-Overall, the results of this experiment suggest that the batch sharpness metric is not a reliable metric for characterizing the EoS phenomenon in the context of large language models. That is, despite the fact that when we train with an MLP we *do* see signs of EoS, making the modification to the setting by introducing a significantly larger model size at a conservative batch size introduces noise which dominates the batch sharpness signal.
+Overall, the results of this experiment suggest that the EoS phenomenon does **not occur** in the context of LMPT. However, we acknowledge limitations and hesitate to make such a strong claim without further (planned) experimentation and analysis. In particular, we acknowledge that the calculation of metrics for this project, simply due to the nature of these models being multi-millions of parameters large, is heavily susceptible to numerical instability and noise. We hope to reproduce these experiments at a larger scale to rule out the possibility of numerical instability.
 
-However, this does not necessarily mean that the EoS phenomenon has no analog in the context of post-training. In fact, it is possible that the batch sharpness metric is simply not the right metric for this task, and that the EoS phenomenon manifests in a different way in the context of post-training. Future work should explore this possibility.
+We additionally acknowledge that the fact none of our existing metrics behaved how we might expect *doesn't necessarily* mean that there *exists* no robust metric that will, unifying these sub-phenomena into a single, unified EoS phenomenon. Future work should explore this possibility.
 
-Additionally, another factor which we acknowledge could impact the emergence of EoS in the post-training phase is consequences of the experiment setup; due to limitations with memory and time, we were unable to perform batch GD experiments (on a signficiantly smaller data subsample) to study the impact of full-batch GD on the EoS phenomenon in LMPT. Future work should additionally explore this possibility.
+Finally, we acknowledge that we fail to analyze these dynamics in the *batch GD* context of the original work. Although these results heavily suggest a no-EoS post training phase, future work should explore the dyanamics of batch GD on this problem.
 
-A final potential culprit is numerical instability at such large model sizes; the largely negative and unstable behavior of the batch sharpness could be caused by the extreme dimensionality of the problem causing issues with the Lanczos iteration used to compute the largest eigenvalue of the Hessian. Future work should explore a new method of compute relevant metrics beyond that established by the literature. ([@EoS], [@EoSS]).
+To conclude, we must *continue* to look for the signs of edge of stability in LMPT, as these results point to the problem setting bringing along with it some new dynamics that we have yet to fully understand.
 
-To this end, we must continue to look for the edge of stability in LMPT, in the hope of generalizing some of the implications from [@EoS].
+### References
