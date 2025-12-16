@@ -129,24 +129,6 @@ def train(config: ExperimentConfig):
     else:
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
 
-    # Create a fixed batch for EoS metrics to ensure consistency (reduce noise from data)
-    # print("Creating fixed validation batch for EoS metrics...")
-    
-    # Reuse the SAME dataset object, just select a small subset for the eval loader
-    # This avoids reloading/retokenizing
-    # eval_subset = full_dataset.select(range(min(100, len(full_dataset))))
-    
-    # eval_dataloader = get_sft_dataloader(
-    #     dataset_name=config.dataset_name,
-    #     tokenizer=tokenizer,
-    #     batch_size=config.eval_batch_size, # Use separate small batch size for eval
-    #     max_length=config.max_length,
-    #     seed=config.seed + 1, 
-    #     dataset=eval_subset # Reuse subset
-    # )
-    # eval_batch = next(iter(eval_dataloader))
-    # eval_batch = {k: v.to(device) for k, v in eval_batch.items()}
-    
     # Training Loop
     model.train()
     progress_bar = tqdm(range(config.max_steps))
@@ -259,10 +241,6 @@ def train(config: ExperimentConfig):
                 actual_block_names = list(block_mapping.values())
                 print(f"Filtered sharpness calculation to layers: {target_indices}")
             
-            # 2. Compute Sharpness (Global + Blocks)
-            
-            # 2. Compute Sharpness (Global + Blocks)
-            
             # Global Results
             global_metrics = {}
             
@@ -279,9 +257,7 @@ def train(config: ExperimentConfig):
                     # Store for logging later
                     global_metrics['block_spectral_results'] = block_results
 
-            # B. Batch Sharpness (Gradient Projection)
             if config.compute_batch_sharpness:
-                # Import the new function
                 from src.metrics import compute_batch_sharpness
                 
                 if config.compute_global_sharpness:
@@ -294,12 +270,8 @@ def train(config: ExperimentConfig):
                     block_results = compute_batch_sharpness(model, loss_wrapper, batch, block_names=actual_block_names)
                     global_metrics['block_batch_results'] = block_results
             
-            # C. Interaction-Aware Sharpness (IAS)
             if config.compute_ias:
                 from src.metrics import compute_ias
-                # We use the training dataloader for this estimation
-                print(f"Step {step}: Computing Interaction-Aware Sharpness (IAS)...")
-                # Note: compute_ias creates its own iterator from the dataloader, so it won't consume the main training loop's iterator
                 ias_results = compute_ias(model, loss_wrapper, dataloader, mc_samples=config.ias_num_samples, block_names=None)
                 
                 if 'global' in ias_results:
@@ -337,7 +309,6 @@ def train(config: ExperimentConfig):
                 metrics["global_ias"] = val
                 metrics["global_ias_sharpprod"] = val * config.learning_rate
             
-            # Add block metrics using friendly names
             if 'block_spectral_results' in global_metrics:
                 block_results = global_metrics['block_spectral_results']
                 for friendly_name, actual_name in block_mapping.items():
@@ -392,14 +363,6 @@ def train(config: ExperimentConfig):
     model.save_pretrained(final_path)
     tokenizer.save_pretrained(final_path)
     print(f"Training complete. Saved to {final_path}")
-    
-    # Generate Plots
-    # print("Generating EoS plots...")
-    # plot_eos_metrics(
-    #     csv_path=output_dir / "metrics.jsonl", # Updated to jsonl
-    #     output_dir=output_dir,
-    #     learning_rate=config.learning_rate
-    # )
     
     logger.finalize()
     print(f"Experiment {config.experiment_name} complete!")

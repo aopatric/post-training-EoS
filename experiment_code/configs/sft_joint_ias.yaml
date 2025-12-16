@@ -14,7 +14,6 @@ model_name: EleutherAI/pythia-70m
 # iterate over use_lora as WELL, get things done in one config
 use_lora: [false, true]
 
-
 # data
 dataset_name: alpaca
 max_length: 1024

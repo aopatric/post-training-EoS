@@ -109,9 +109,6 @@ def load_base_model(model_name: str, seed: int = 42, **kwargs) -> PreTrainedMode
     if use_mlp_dry_run:
         print("!!! DRY RUN MODE ENABLED: USING SIMPLE MLP !!!")
         
-        # We still need a tokenizer later, so we assume vocab size is standard (e.g. GPT-NeoX)
-        # Or ideally we get it from the tokenizer, but here we just hardcode a safe default or make it configurable
-        # For Pythia/GPT-NeoX it's 50304 usually, but let's stick to safe default or pass it
         vocab_size = 50304 # Pythia default
         
         config = SimpleMLPConfig(vocab_size=vocab_size, hidden_size=width, num_layers=depth)
@@ -121,8 +118,6 @@ def load_base_model(model_name: str, seed: int = 42, **kwargs) -> PreTrainedMode
         if "device_map" in kwargs and kwargs["device_map"] != "auto":
              pass # Handled by caller usually, but here we invoke to()
         
-        # For simplicity in dry run, just return CPU model and let training script move it
-        # Or if device is in kwargs, move it
         return model
 
     print(f"Loading base model: {model_name}")

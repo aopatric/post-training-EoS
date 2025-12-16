@@ -59,31 +59,14 @@ def lanczos(
     """
     def mv(vec: np.ndarray):
         gpu_vec = torch.tensor(vec, dtype=torch.float32, device=device)
-        with torch.no_grad(): # HVP calculation handles its own graph, but the wrapper shouldn't track
-             # Actually HVP NEEDS graph for the double backward. 
-             # But the input vector is constant.
-             pass
-        
-        # We need to call hvp_fn which uses autograd.
-        # The input 'vec' is from scipy, so it's numpy.
         return hvp_fn(gpu_vec).cpu().numpy()
 
     operator = LinearOperator((dim, dim), matvec=mv)
     
-    # Use 'LA' for Largest Algebraic (since Hessian is real symmetric, eigenvalues are real)
-    # For sharpness we want the largest magnitude, but usually it's positive.
-    # If we suspect negative curvature dominating, 'LM' (Largest Magnitude) might be better.
-    # Reference code uses default which is 'LM' for eigsh? No, eigsh default is 'LM'.
-    # Reference code uses `eigsh(operator, neigs)`.
     try:
-        # Check if vector has NaNs (SciPy might pass them if previous steps failed)
-        # But here we just run eigsh.
-        
         evals, _ = eigsh(operator, k=neigs, which='LA', tol=1e-6, maxiter=10000)
-        # Return the largest algebraic eigenvalue
         return float(np.max(evals))
     except Exception as e:
-        print(f"Lanczos failed: {e}")
         return 0.0
 
 def compute_sharpness(
@@ -225,35 +208,10 @@ def compute_batch_sharpness(
         if grad_norm_sq.item() == 0:
             results['global'] = 0.0
         else:
-            # 4. Compute HVP (H * grad)
-            # grad(grad_norm_sq) = 2 * H * grad? No.
-            # grad(grad^T * grad) = 2 * grad^T * H?
-            # Let's stick to the definition: HVP(v) = grad(grad(L)^T * v)
-            # Here v = grad(L). So dot = grad(L)^T * grad(L) = grad_norm_sq.
-            # So grad(dot) = grad(grad_norm_sq) = 2 * H * grad(L).
-            # Wait, d/dtheta (g^T g) = 2 g^T (dg/dtheta) = 2 g^T H.
-            # So grad(grad_norm_sq) gives 2 * H * g.
-            # So we need to divide by 2?
-            # Let's verify Pearlmutter trick.
-            # dot = grad * v.
-            # grad(dot) = H * v.
-            # Here v is NOT constant, v is grad(theta).
-            # So if we differentiate grad^T * grad, we get term for first grad and second grad.
-            # It's 2 * H * grad.
-            # So yes, we need to divide by 2 if we differentiate grad_norm_sq directly.
-            
-            # However, in compute_hvp, 'vector' is treated as constant (detached).
-            # If we pass flat_grads as a detached vector, then we are good.
-            # But here I am differentiating grad_norm_sq which depends on theta twice.
-            
-            # Let's do it safely using the standard HVP trick with detached vector.
             v = flat_grads.detach()
             
-            # Re-compute dot with detached vector to treat it as constant for the second derivative
-            # dot = grad^T * v
             dot = flat_grads.mul(v).sum()
             
-            # grad(dot) = H * v
             hvp = parameters_to_vector(torch.autograd.grad(dot, inputs=params, retain_graph=True))
             
             numerator = v.mul(hvp).sum()
@@ -367,10 +325,6 @@ def compute_ias(
         
     device = params[0].device
     
-    # Prepare for block-wise if requested
-    # We will only support global for now in this pass to ensure correctness of the complex metric
-    # But we can allow 'global' key in results.
-    
     for i in range(mc_samples):
         try:
             # Get the next batch
@@ -378,93 +332,33 @@ def compute_ias(
         except StopIteration:
             break
 
-        # Move batch to device (dataloader usually does this, but run_sft manual loop does it)
-        # Inside run_sft, the dataloader yields cpu tensors usually, and we move them.
-        # But here we are passed the dataloader directly.
-        # We need to ensure batch is on device.
         if isinstance(batch, dict):
              batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         elif isinstance(batch, (list, tuple)):
              batch = [v.to(device) if isinstance(v, torch.Tensor) else v for v in batch]
 
-        # --- Phase 1: Calculate the Mini-Batch Gradient (g_xi) ---
-        
-        # Zero previous gradients
         model.zero_grad()
         
-        # Forward pass and loss calculation
-        # The loss_fn wrapper handles the forward pass: loss_fn(model, batch) -> tensor
         loss = loss_fn(model, batch)
 
-        # First backward pass computes dL/d(params) = g_xi
-        # We use create_graph=True to allow for the second derivative calculation (HvP)
-        # We need to manually call grad() because loss.backward() accumulates in .grad which is harder to HVP
-        
         gradients = grad(loss, params, create_graph=True, retain_graph=True)
 
-        # --- Phase 2: Calculate Denominator (||g_xi||^2) ---
-        # Component: ||g_xi||^2
-        
-        # Optimization: Flatten gradients once
         flat_grads = parameters_to_vector(gradients)
         grad_norm_sq = flat_grads.pow(2).sum()
         denominator_sum += grad_norm_sq.item()
-
-        # --- Phase 3: Calculate Numerator (g_xi^T * H * g_xi) via HvP ---
-        # The quantity g_xi^T * H * g_xi is the second directional derivative (HvP) 
-        # of the loss function L, evaluated along the direction of the gradient g_xi.
-
-        # Calculate the Hessian-Vector Product (H * g_xi) where the vector is g_xi itself.
-        # We need the HvP: H * g_xi
-        
-        # In the user snippet:
-        # hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
-        # That syntax suggests gradient of gradients?
-        # torch.autograd.grad(outputs, inputs, grad_outputs=...) 
-        # If outputs is a list of tensors (gradients), we need grad_outputs.
-        
-        # User snippet:
-        # hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
-        # This computes sum(gradients * grad_outputs) gradients?
-        # d/d_params ( sum(gradients_i * gradients_i) ) ? 
-        # Yes, if you pass grad_outputs=gradients, it computes grad( sum(gradients * gradients) ).
-        # Wait, standard Jacobian-vector product.
-        # if y = gradients(x). We want J * v. 
-        # torch.autograd.grad(y, x, grad_outputs=v) computes v^T * J.
-        # Since Hessian is symmetric, J = H. v^T H = (H v)^T.
-        # So yes, this gives H * g_xi.
         
         hv_product = grad(gradients, params, grad_outputs=gradients, retain_graph=True)
 
-        # Component: g_xi^T * (H * g_xi)
-        # This is the dot product of the original gradient g_xi and the HvP (H * g_xi)
-        
-        # User snippet:
-        # g_T_H_g = sum(torch.sum(g_i * hv_i) for g_i, hv_i in zip(gradients, hv_product))
-        
-        # We can use flattened versions
         flat_hv = parameters_to_vector(hv_product)
-        
-        # We used flat_grads for detached vector for dot product
-        # Ensure we use the proper graph-connected variables if needed?
-        # The user snippet sums them up.
-        # numerator_sum += g_T_H_g.detach()
-        # We only need the scalar value for the accumulation.
         
         g_T_H_g = flat_grads.mul(flat_hv).sum()
         numerator_sum += g_T_H_g.item()
         
-        # Clean up graph
-        # del gradients, hv_product, loss
-        # params are kept
-        
-    # 4. Final IAS Calculation
     if denominator_sum == 0:
         results['global'] = 0.0
     else:
         results['global'] = numerator_sum / denominator_sum
     
-    # Restore model mode
     if was_training:
         model.train()
     
